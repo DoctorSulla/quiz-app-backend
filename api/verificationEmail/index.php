@@ -9,6 +9,10 @@ $method = $_SERVER['REQUEST_METHOD'];
 $requestBody = file_get_contents('php://input');
 $requestObject = json_decode($requestBody);
 
+if($method == 'OPTIONS') {
+  die(http_response_code(200));
+}
+
 // API authentication
 $headers = getallheaders();
 
@@ -55,6 +59,7 @@ switch($method) {
     send_email($to,$toName,$from,$subject,$body);
     $responseObject->error = false;
     $responseObject->message = "Verification email sent for ".$user->email.", please check your spam folder if you are unable to see it in your inbox.";
+    echo json_encode($responseObject);
   break;
   case "OPTIONS":
     http_response_code(200);

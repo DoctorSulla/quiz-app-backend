@@ -29,40 +29,59 @@ $dynamodb = $sdk->createDynamoDb();
 
 $marshaler = new Marshaler();
 
+// Miscellaneous Functions
 
-$charSet = ["A","B","C","D","E","F","G","H","I","J","K","L","M","N","O","P","Q","R","S","T","U","V","W","X","Y","Z","0","1","2","3","4","5","6","7","8","9"];
+function add_to_table($tableName,$object,$dynamodb,$marshaler) {
+
+  $item = $marshaler->marshalJson(json_encode($object));
+
+  $params = [
+      'TableName' => $tableName,
+      'Item' => $item
+  ];
+
+
+  try {
+      $result = $dynamodb->putItem($params);
+      return $result;
+  } catch (DynamoDbException $e) {
+      throw new Exception('Item could not be added to the database.');
+  }
+}
+
+function delete_item($table,$index,$value,$dynamodb,$marshaler) {
+
+  $key = $marshaler->marshalJson('
+    {
+        "'.$index.'": "' . $value . '"
+    }');
+
+  $eav = $marshaler->marshalJson('
+      {
+          ":val": "'.$value.'"
+      }
+  ');
+
+  $params = [
+      'TableName' => $table,
+      'Key' => $key,
+  ];
+
+  try {
+      $result = $dynamodb->deleteItem($params);
+      return true;
+  } catch (DynamoDbException $e) {
+      echo $e->getMessage();
+      return false;
+  }
+}
+
 function generate_id($charSet,$length) {
   $result = "";
   for($i=0;$i<$length;$i++) {
     $result .= $charSet[random_int(0,count($charSet)-1)];
   }
  return $result;
-}
-
-class AccessToken {
-  function __construct() {
-    $this->header = new stdClass();
-    $this->header->alg = "HS256";
-    $this->header->type = "JWT";
-  }
-
-  function set_payload($user) {
-    $this->payload = $user;
-  }
-
-  function generate_signature($secret) {
-    $header = json_encode($this->header);
-    $payload = json_encode($this->payload);
-
-    $content = base64_encode($header).".".base64_encode($payload);
-    $this->signature = base64_encode(hash_hmac('sha256',$content,$secret,true));
-  }
-
-  function generate_jwt() {
-    $header = base64_encode(json_encode($this->header));
-    $payload = base64_encode(json_encode($this->payload));
-    return $header.".".$payload.".".$this->signature;
-  }
 }
 
 function send_email($to,$toName,$from,$subject,$body) {
@@ -92,6 +111,98 @@ function send_email($to,$toName,$from,$subject,$body) {
   }
   else {
     return false;
+  }
+}
+
+// Auth & Login Functions
+
+function check_user_exists($email,$dynamodb,$marshaler) {
+  $key = $marshaler->marshalJson('
+      {
+        "email": "' .$email. '"
+      }
+  ');
+
+  $params = [
+      'TableName' => 'users',
+      'Key' => $key
+  ];
+      $result = $dynamodb->getItem($params);
+      // Check if result is empty, if not the user already exists
+      if($result['Item'] != null) {
+        throw new Exception('That email address is already registered.');
+      }
+}
+
+function get_user($email,$dynamodb,$marshaler) {
+  $key = $marshaler->marshalJson('
+      {
+        "email": "' .$email. '"
+      }
+  ');
+
+  $params = [
+      'TableName' => 'users',
+      'Key' => $key
+  ];
+      $result = $dynamodb->getItem($params);
+      // Check if result is empty, if so the game doesn't exist
+      if($result['Item'] == null) {
+        throw new Exception('That user does not exist.');
+      }
+      else {
+        $result = $marshaler->unmarshalJson($result['Item']);
+        $result = json_decode($result);
+        return $result;
+      }
+}
+
+function get_evc($email,$dynamodb,$marshaler) {
+  $key = $marshaler->marshalJson('
+      {
+        "email": "' .$email. '"
+      }
+  ');
+
+  $params = [
+      'TableName' => 'activation_codes',
+      'Key' => $key
+  ];
+      $result = $dynamodb->getItem($params);
+      // Check if result is empty, if so the game doesn't exist
+      if($result['Item'] == null) {
+        throw new Exception('No verification code found for that email.');
+      }
+      else {
+        $result = $marshaler->unmarshalJson($result['Item']);
+        $result = json_decode($result);
+        return $result;
+      }
+}
+
+class AccessToken {
+  function __construct() {
+    $this->header = new stdClass();
+    $this->header->alg = "HS256";
+    $this->header->type = "JWT";
+  }
+
+  function set_payload($user) {
+    $this->payload = $user;
+  }
+
+  function generate_signature($secret) {
+    $header = json_encode($this->header);
+    $payload = json_encode($this->payload);
+
+    $content = base64_encode($header).".".base64_encode($payload);
+    $this->signature = base64_encode(hash_hmac('sha256',$content,$secret,true));
+  }
+
+  function generate_jwt() {
+    $header = base64_encode(json_encode($this->header));
+    $payload = base64_encode(json_encode($this->payload));
+    return $header.".".$payload.".".$this->signature;
   }
 }
 
@@ -164,8 +275,62 @@ class RegistrationRequest {
     $this->id = $userId;
     $this->registrationTimestamp = time();
     $this->ownedCategories = [];
+    $this->likedCategories = [];
+    $this->wins = 0;
+    $this->losses = 0;
   }
 }
+
+function update_user($email,$properties,$newValues,$dynamodb,$marshaler) {
+  if(count($properties) != count($newValues)) {
+    throw new Exception("Properties and new values length mismatch");
+  }
+  $key = $marshaler->marshalJson('
+  {
+    "email":"'.$email.'"
+  }');
+
+  $variables = [":a",":b",":c",":d",":e",":f",":g",":h",":i",":j"];
+
+  $eavJson = '{';
+    for($i=0;$i<count($properties);$i++) {
+      $eavJson .= '"'.$variables[$i].'":'.json_encode($newValues[$i]);
+      if($i+1 < count($properties)) {
+        $eavJson .= ',';
+      }
+    }
+
+  $eavJson .= '}';
+
+  $ue = 'set ';
+  for($i=0;$i<count($properties);$i++) {
+    $ue .= $properties[$i]. ' = '.$variables[$i];
+    if($i+1 < count($properties)) {
+      $ue .= ',';
+    }
+  }
+
+  $eav = $marshaler->marshalJson($eavJson);
+
+  $params = [
+      'TableName' => 'users',
+      'Key' => $key,
+      'UpdateExpression' =>
+          $ue,
+      'ExpressionAttributeValues'=> $eav,
+      'ReturnValues' => 'UPDATED_NEW'
+  ];
+
+  try {
+      $result = $dynamodb->updateItem($params);
+      return true;
+
+    } catch (DynamoDbException $e) {
+      throw new Exception("Unable to update user.");
+  }
+}
+
+// Gameplay related functions
 
 class GameInstance {
   function __construct($id,$category,$playerOne,$playerOneId,$questions) {
@@ -212,70 +377,6 @@ function get_game($gameId,$dynamodb,$marshaler) {
   } catch (DynamoDbException $e) {
       return false;
   }
-}
-
-function get_user($email,$dynamodb,$marshaler) {
-  $key = $marshaler->marshalJson('
-      {
-        "email": "' .$email. '"
-      }
-  ');
-
-  $params = [
-      'TableName' => 'users',
-      'Key' => $key
-  ];
-      $result = $dynamodb->getItem($params);
-      // Check if result is empty, if so the game doesn't exist
-      if($result['Item'] == null) {
-        throw new Exception('That user does not exist.');
-      }
-      else {
-        $result = $marshaler->unmarshalJson($result['Item']);
-        $result = json_decode($result);
-        return $result;
-      }
-}
-
-function get_evc($email,$dynamodb,$marshaler) {
-  $key = $marshaler->marshalJson('
-      {
-        "email": "' .$email. '"
-      }
-  ');
-
-  $params = [
-      'TableName' => 'activation_codes',
-      'Key' => $key
-  ];
-      $result = $dynamodb->getItem($params);
-      // Check if result is empty, if so the game doesn't exist
-      if($result['Item'] == null) {
-        throw new Exception('No verification code found for that email.');
-      }
-      else {
-        $result = $marshaler->unmarshalJson($result['Item']);
-        $result = json_decode($result);
-        return $result;
-      }
-}
-
-function check_user_exists($email,$dynamodb,$marshaler) {
-  $key = $marshaler->marshalJson('
-      {
-        "email": "' .$email. '"
-      }
-  ');
-
-  $params = [
-      'TableName' => 'users',
-      'Key' => $key
-  ];
-      $result = $dynamodb->getItem($params);
-      // Check if result is empty, if not the user already exists
-      if($result['Item'] != null) {
-        throw new Exception('That email address is already registered.');
-      }
 }
 
 function update_game_properties($gameId,$properties,$newValues,$dynamodb,$marshaler) {
@@ -327,73 +428,6 @@ function update_game_properties($gameId,$properties,$newValues,$dynamodb,$marsha
   }
 }
 
-function update_user($email,$properties,$newValues,$dynamodb,$marshaler) {
-  if(count($properties) != count($newValues)) {
-    throw new Exception("Properties and new values length mismatch");
-  }
-  $key = $marshaler->marshalJson('
-  {
-    "email":"'.$email.'"
-  }');
-
-  $variables = [":a",":b",":c",":d",":e",":f",":g",":h",":i",":j"];
-
-  $eavJson = '{';
-    for($i=0;$i<count($properties);$i++) {
-      $eavJson .= '"'.$variables[$i].'":'.json_encode($newValues[$i]);
-      if($i+1 < count($properties)) {
-        $eavJson .= ',';
-      }
-    }
-
-  $eavJson .= '}';
-
-  $ue = 'set ';
-  for($i=0;$i<count($properties);$i++) {
-    $ue .= $properties[$i]. ' = '.$variables[$i];
-    if($i+1 < count($properties)) {
-      $ue .= ',';
-    }
-  }
-
-  $eav = $marshaler->marshalJson($eavJson);
-
-  $params = [
-      'TableName' => 'users',
-      'Key' => $key,
-      'UpdateExpression' =>
-          $ue,
-      'ExpressionAttributeValues'=> $eav,
-      'ReturnValues' => 'UPDATED_NEW'
-  ];
-
-  try {
-      $result = $dynamodb->updateItem($params);
-      return true;
-
-    } catch (DynamoDbException $e) {
-      throw new Exception("Unable to update user because ".$e->getMessage());
-  }
-}
-
-function add_to_table($tableName,$object,$dynamodb,$marshaler) {
-
-  $item = $marshaler->marshalJson(json_encode($object));
-
-  $params = [
-      'TableName' => $tableName,
-      'Item' => $item
-  ];
-
-
-  try {
-      $result = $dynamodb->putItem($params);
-      return $result;
-  } catch (DynamoDbException $e) {
-      throw new Exception('Item could not be added to the database');
-  }
-}
-
 function calculate_score($oldScore,$startingTimestamp,$bonus) {
   $difference = time() - $startingTimestamp;
   if($difference >= 10) {
@@ -406,30 +440,70 @@ function calculate_score($oldScore,$startingTimestamp,$bonus) {
   return $score;
 }
 
-function delete_item($table,$index,$value,$dynamodb,$marshaler) {
+// Create Category Related Functions
 
+function check_category_exists($category,$dynamodb,$marshaler) {
   $key = $marshaler->marshalJson('
-    {
-        "'.$index.'": "' . $value . '"
-    }');
-
-  $eav = $marshaler->marshalJson('
       {
-          ":val": "'.$value.'"
+        "category": "' .$category. '"
       }
   ');
 
   $params = [
-      'TableName' => $table,
-      'Key' => $key,
+      'TableName' => 'categories',
+      'Key' => $key
   ];
+      $result = $dynamodb->getItem($params);
+      // Check if result is empty, if not the user already exists
+      if($result['Item'] != null) {
+        throw new Exception('A category with the name '.$category.' already exists, please choose a different name.');
+      }
+}
 
-  try {
-      $result = $dynamodb->deleteItem($params);
-      return true;
-  } catch (DynamoDbException $e) {
-      echo $e->getMessage();
-      return false;
+function validate_category($category,$dynamodb,$marshaler) {
+  // Check category is present
+  if(!isset($category->category)) {
+    throw new Exception('Category name missing.');
+  }
+  // Check if category already exists
+  check_category_exists($category->category,$dynamodb,$marshaler);
+  // Check regex for category name
+  if(!preg_match($GLOBALS['categoryRegExp'],$category->category)) {
+    throw new Exception('Invalid category name.');
+  }
+  // Check questions are present
+  if(!isset($category->questions)) {
+    throw new Exception('Questions missing.');
+  }
+  // Check there are at least 10 questions
+  if(count($category->questions) < 10) {
+    throw new Exception('At least 10 questions are required for a new category.');
+  }
+  // Iterate through questions and check the questions and answers all conform to the regex
+  foreach($category->questions as $question) {
+    if(!isset($question->question)) {
+      throw new Exception('Question missing.');
+    }
+    else if(!preg_match($GLOBALS['qAndARegExp'],$question->question)) {
+      throw new Exception('Invalid question name.');
+    }
+    else if(!isset($question->otherAnswers)) {
+      throw new Exception('Other answers missing.');
+    }
+    else if(count($question->otherAnswers) != 3) {
+      throw new Exception('3 alternate answers must be provided for each question.');
+    }
+    if(!isset($question->correctAnswer)) {
+      throw new Exception('Correct answer missing.');
+    }
+    else if(!preg_match($GLOBALS['qAndARegExp'],$question->correctAnswer)) {
+      throw new Exception('Invalid answer.');
+    }
+    foreach($question->otherAnswers as $answer) {
+      if(!preg_match($GLOBALS['qAndARegExp'],$answer)) {
+        throw new Exception('Invalid answer.');
+      }
+    }
   }
 }
 ?>

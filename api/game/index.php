@@ -20,7 +20,6 @@ if(!isset($headers['jwt'])) {
 $jwt = $headers['jwt'];
 
 try { verify_jwt($jwt,$hmacSecret); } catch(Exception $e) {
-  echo "Invalid token";
   die(http_response_code(401));
 }
 
