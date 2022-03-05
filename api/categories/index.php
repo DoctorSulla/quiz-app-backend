@@ -38,7 +38,7 @@ switch($method) {
     // Set the params to query the table
     $params = [
       'TableName' => 'categories',
-      'ProjectionExpression' => 'category'
+      'ProjectionExpression' => 'category, icon'
     ];
 
     // Scan through the list of categories and add them to the array
@@ -47,8 +47,11 @@ switch($method) {
           $result = $dynamodb->scan($params);
 
           foreach ($result['Items'] as $i) {
-              $category = $marshaler->unmarshalItem($i);
-              array_push($categories,$category['category']);
+              $item = $marshaler->unmarshalItem($i);
+              $category = new stdClass();
+              $category->name = $item['category'];
+              $category->icon = $item['icon'];
+              array_push($categories,$category);
           }
 
           if (isset($result['LastEvaluatedKey'])) {
@@ -58,7 +61,6 @@ switch($method) {
           }
       }
       $responseObject->categories = $categories;
-      http_response_code(200);
       echo json_encode($responseObject);
 
     } catch (DynamoDbException $e) {
