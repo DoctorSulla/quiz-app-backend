@@ -98,8 +98,8 @@ function send_email($to,$toName,$from,$subject,$body) {
       'allow_self_signed' => false
     )
   );
-  $mail->Username = 'AKIATOSJGMA43P2S5IDT';
-  $mail->Password = 'BFkKTi8USYpNz9HZCaa/xTEK0937FG2m8rS0nBwmx3U/';
+  $mail->Username = $GLOBALS['smtpUser'];
+  $mail->Password = $GLOBALS['smtpPassword'];
   $mail->setFrom($from, 'Quiz App');
   $mail->addReplyTo($from, 'Quiz App');
   $mail->addAddress($to,$toName);
