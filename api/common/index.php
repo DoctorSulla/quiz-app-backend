@@ -241,13 +241,35 @@ function verify_jwt($jwt,$secret) {
 }
 
 function verify_login($email,$password,$dynamodb,$marshaler) {
-  try { $user = get_user($email,$dynamodb,$marshaler); } catch(Exception $e) {
-    return false;
+
+  if(!preg_match($GLOBALS['emailRegExp'],$email)) {
+    throw new Exception("That user does not exist.");
+  }
+  $user = get_user($email,$dynamodb,$marshaler);
+
+  if(isset($user->retryCount) && $user->retryCount > $GLOBALS['maxPasswordRetries']) {
+    throw new Exception("Too many attempts - account has been locked.");
   }
   if(password_verify($password,$user->hashedPassword)) {
+    reset_retry_count($user,$dynamodb,$marshaler);
     return true;
   }
-  return false;
+  increment_retry_count($user,$dynamodb,$marshaler);
+    throw new Exception("Invalid password.");
+}
+
+function reset_retry_count($user,$dynamodb,$marshaler) {
+  update_user($user->email,['retryCount'],[0],$dynamodb,$marshaler);
+}
+
+function increment_retry_count($user,$dynamodb,$marshaler) {
+  if(isset($user->retryCount)) {
+    $retryCount = $user->retryCount + 1;
+  }
+  else {
+    $retryCount = 1;
+  }
+  update_user($user->email,['retryCount'],[$retryCount],$dynamodb,$marshaler);
 }
 
 class RegistrationRequest {
@@ -429,10 +451,23 @@ function update_game_properties($gameId,$properties,$newValues,$dynamodb,$marsha
 }
 
 function calculate_score($oldScore,$startingTimestamp,$bonus) {
-  $difference = time() - $startingTimestamp;
+  // Give an extra 2 seconds to account for the delay between the question an answers being shown
+  $difference = time() - ($startingTimestamp + 2);
+
+  // The score can't be better than 20 or 40 (bonus question)
+  if($difference <= 0 && $bonus) {
+    return $oldScore + 40;
+  }
+  else if($difference <=0 && ! $bonus) {
+    return $oldScore + 20;
+  }
+
+  // If they difference is greater than 10 they score 0
   if($difference >= 10) {
     return $oldScore;
   }
+
+  // Calculate the old score + the max score minus any deduction
   $score = $oldScore + 20 - ($difference * 2);
   if($bonus) {
     $score = $oldScore + 40 - ($difference * 4);

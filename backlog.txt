@@ -1,4 +1,4 @@
--Allow an icon to be specified when creating a category
+-Allow filtering of categories
 -Add some volume checking for login
 -Allow categories to be edited
 -Update a win or a loss when a user finishes a game

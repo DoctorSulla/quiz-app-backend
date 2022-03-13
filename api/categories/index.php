@@ -75,6 +75,14 @@ switch($method) {
     die(http_response_code(400));
   }
 
+  if(!isset($requestObject->icon)) {
+    $icon = 'faQuestion';
+    $requestObject->icon = $icon;
+  }
+  else {
+    $icon = $requestObject->icon;
+  }
+
   try { validate_category($requestObject,$dynamodb,$marshaler); } catch(Exception $e) {
     $responseObject->error = true;
     $responseObject->message = $e->getMessage();
@@ -91,7 +99,8 @@ switch($method) {
   $email = get_jwt_claims($jwt)->email;
   $user = get_user($email,$dynamodb,$marshaler);
   if(isset($user->ownedCategories)) {
-    $ownedCategories = array_push($user->ownedCategories,$requestObject->category);
+    array_push($user->ownedCategories,$requestObject->category);
+    $ownedCategories = $user->ownedCategories;
   }
   else {
     $ownedCategories = [$requestObject->category];

@@ -17,15 +17,16 @@ switch($method) {
     die(http_response_code(400));
   }
   else {
-    if(verify_login($requestObject->email,$requestObject->password,$dynamodb,$marshaler)) {
+
+    try {
+      verify_login($requestObject->email,$requestObject->password,$dynamodb,$marshaler);
       $token = get_jwt($requestObject->email,$durationInSeconds,$hmacSecret,$dynamodb,$marshaler);
       $responseObject->jwt = $token;
       echo json_encode($responseObject,JSON_UNESCAPED_SLASHES);
-    }
-    else {
+    } catch(Exception $e) {
       http_response_code(401);
       $responseObject->error = true;
-      $responseObject->message = "Invalid username and password combination.";
+      $responseObject->message = $e->getMessage();
       die(json_encode($responseObject));
     }
   }
