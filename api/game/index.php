@@ -49,8 +49,22 @@ switch($method) {
       die(http_response_code(401));
     }
 
-
     if($result->gameStatus == "AwaitingPlayers" || $retrieveQuestions == "false") {
+
+      // If both players have answered but the game has not moved on for some reason move to the next question
+      if($result->completedP1 == true && $result->completedP2 == true && $activeQuestion != 7) {
+        $newQuestion = $result->activeQuestion + 1;
+        update_game_properties($gameId,['scores','timestampP1','timestampP2','completedP1','completedP2','activeQuestion'],[$result->scores,null,null,false,false,$newQuestion],$dynamodb,$marshaler);
+      }
+
+      // If it has been more than 20 seconds since the question started move to the next question
+      $time = time();
+      if(($result->timestampP1 != null && $result->timestampP1 + 20 < $time) || ($result->timestampP2 != null && $result->timestampP2 + 20 < $time) && $activeQuestion != 7) {
+        $newQuestion = $result->activeQuestion + 1;
+        update_game_properties($gameId,['scores','timestampP1','timestampP2','completedP1','completedP2','activeQuestion'],[$result->scores,null,null,false,false,$newQuestion],$dynamodb,$marshaler);
+      }
+
+
       $responseObject->players = $result->players;
       $responseObject->gameStatus = $result->gameStatus;
       $responseObject->activeQuestion = $result->activeQuestion;
@@ -85,9 +99,13 @@ switch($method) {
     $questionAndAnswers = $result->questions[$activeQuestion];
     // Get question text
     $question = $questionAndAnswers->question;
+    $question = html_entity_decode($question,ENT_QUOTES,'UTF-8');
     // Combine correct and incorrect answers and shuffle the array
     $answers = $questionAndAnswers->otherAnswers;
     array_push($answers,$questionAndAnswers->correctAnswer);
+    for($i=0;$i <count($answers);$i++) {
+      $answers[$i] = html_entity_decode($answers[$i],ENT_QUOTES,'UTF-8');
+    }
     shuffle($answers);
     // Populate the response object
     $responseObject->id = $result->id;
@@ -106,6 +124,9 @@ switch($method) {
     }
     $gameId = generate_id($charSet,6);
     $category = $requestObject->category;
+    // Category needs to be encoded or it will fail to find a match in the DB
+    $category = htmlentities($category,ENT_QUOTES,'UTF-8',false);
+
 
     $key = $marshaler->marshalJson('
         {
@@ -215,7 +236,7 @@ switch($method) {
         $bonus = false;
       }
       $correctAnswer = $result->questions[$result->activeQuestion]->correctAnswer;
-      $submittedAnswer = $requestObject->answer;
+      $submittedAnswer = htmlentities($requestObject->answer,ENT_QUOTES,'UTF-8',false);
       if($result->gameStatus == "AwaitingPlayers") {
         $responseObject->error = true;
         $responseObject->message = "You cannot answer a question for a game that hasn't started.";

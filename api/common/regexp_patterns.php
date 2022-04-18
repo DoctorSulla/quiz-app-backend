@@ -6,9 +6,9 @@ $emailRegExp = '/^(?!(?:(?:\x22?\x5C[\x00-\x7E]\x22?)|(?:\x22?[^\x5C\x22]\x22?))
 
 $passwordRegExp = "/^.{5,50}$/";
 
-$categoryRegExp = "/^[A-z0-9\-]{4,100}$/";
+$categoryRegExp = "/^[&#;A-z0-9\-]{4,100}$/";
 
-$qAndARegExp = "/^[A-z0-9\?\' \-]{1,200}$/"
+$qAndARegExp = "/^[&#;A-z0-9\?\' \-]{1,200}$/";
 
 
 // Game

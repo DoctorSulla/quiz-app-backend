@@ -3,3 +3,5 @@
 -Update a win or a loss when a user finishes a game
 -Create a profile screen
 -Allow user to change or reset password
+-Create an owner when a category is created
+-Allow categories with special characters to be picked

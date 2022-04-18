@@ -495,6 +495,32 @@ function check_category_exists($category,$dynamodb,$marshaler) {
       }
 }
 
+function decode_category_entities($category) {
+  $category->category = html_entity_decode($category->category,ENT_QUOTES,'UTF-8');
+    
+  foreach($category->questions as $question) {
+      $question->question = html_entity_decode($question->question,ENT_QUOTES,'UTF-8');
+      $question->correctAnswer = html_entity_decode($question->correctAnswer,ENT_QUOTES,'UTF-8');
+      foreach($question->otherAnswers as $answer) {
+          $answer = html_entity_decode($answer,ENT_QUOTES,'UTF-8');
+      }
+  }
+  return $category;
+}
+
+function encode_category_entities($category) {
+  $category->category = htmlentities($category->category,ENT_QUOTES,'UTF-8',false);
+    
+  foreach($category->questions as $question) {
+      $question->question = htmlentities($question->question,ENT_QUOTES,'UTF-8',false);
+      $question->correctAnswer = htmlentities($question->correctAnswer,ENT_QUOTES,'UTF-8',false);
+      foreach($question->otherAnswers as $answer) {
+          $answer = htmlentities($answer,ENT_QUOTES,'UTF-8',false);
+      }
+  }
+  return $category;
+}
+
 function validate_category($category,$dynamodb,$marshaler) {
   // Check category is present
   if(!isset($category->category)) {

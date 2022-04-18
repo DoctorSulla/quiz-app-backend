@@ -49,7 +49,7 @@ switch($method) {
           foreach ($result['Items'] as $i) {
               $item = $marshaler->unmarshalItem($i);
               $category = new stdClass();
-              $category->name = $item['category'];
+              $category->name = html_entity_decode($item['category'],ENT_QUOTES,'UTF-8');
               $category->icon = $item['icon'];
               array_push($categories,$category);
           }
@@ -82,6 +82,9 @@ switch($method) {
   else {
     $icon = $requestObject->icon;
   }
+
+  $requestObject = encode_category_entities($requestObject);
+  $requestObject->author = get_jwt_claims($jwt)->username;
 
   try { validate_category($requestObject,$dynamodb,$marshaler); } catch(Exception $e) {
     $responseObject->error = true;

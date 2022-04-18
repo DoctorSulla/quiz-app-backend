@@ -113,7 +113,24 @@ switch($method) {
     $responseObject->message = "Invalid verification code.";
     die(json_encode($responseObject));
   }
+  case "GET":
+  // API authentication
+  $headers = getallheaders();
 
+  if(!isset($headers['jwt'])) {
+    die(http_response_code(401));
+  }
+
+  $jwt = $headers['jwt'];
+
+  try { verify_jwt($jwt,$hmacSecret); } catch(Exception $e) {
+    die(http_response_code(401));
+  }
+
+  $jwtClaims = get_jwt_claims($jwt);
+  $user = get_user($jwtClaims->email,$dynamodb,$marshaler);
+  // End API authentication
+  break;
   case "OPTIONS":
     http_response_code(200);
   break;
