@@ -29,10 +29,40 @@ try { verify_jwt($jwt,$hmacSecret); } catch(Exception $e) {
 // End API authentication
 
 $requestBody = file_get_contents('php://input');
+logRequest($requestBody,$method);
 $requestObject = json_decode($requestBody);
+
+if($requestObject == null && strlen($requestBody) > 0) {
+  $responseObject->error = true;
+  $responseObject->message = 'Invalid JSON in request body.';
+  http_response_code(400);
+  die(json_encode($responseObject));
+}
 
 switch($method) {
   case "GET":
+    if(isset($_GET['category'])) {
+      $category = $_GET['category'];
+      $category = htmlentities($category,ENT_QUOTES,'UTF-8');
+      $email = get_jwt_claims($jwt)->email;
+      $user = get_user($email,$dynamodb,$marshaler);
+      $ownedCategories = $user->ownedCategories;
+      if(!in_array($category,$ownedCategories)) {
+        http_response_code(401);
+        $responseObject->additionalInfo = $category;
+        $responseObject->error = true;
+        $responseObject->message = 'You do not have permission to edit this category.';
+        die(json_encode($responseObject));
+      }
+      try {
+        $responseObject = get_category($category,$dynamodb,$marshaler);
+      } catch(Exception $e) {
+        $responseObject->error = true;
+        $responseObject->message = $e->getMessage();
+        die(json_encode($responseObject));
+      }
+      die(json_encode($responseObject));
+    }
     // Create an empty array
     $categories = [];
     // Set the params to query the table
@@ -74,7 +104,8 @@ switch($method) {
   if(!isset($requestObject->category)) {
     die(http_response_code(400));
   }
-
+  
+  // Add default icon if one is not provided
   if(!isset($requestObject->icon)) {
     $icon = 'faQuestion';
     $requestObject->icon = $icon;
@@ -114,6 +145,41 @@ switch($method) {
   case "PATCH":
 
   // Code to update a category goes here
+  $email = get_jwt_claims($jwt)->email;
+  $user = get_user($email,$dynamodb,$marshaler);
+ 
+  $category = $requestObject->category;
+  $encodedCategory = htmlentities($requestObject->category,ENT_QUOTES,'UTF-8');
+
+  if(in_array($category,$user->ownedCategories)) {
+    $requestObject = encode_category_entities($requestObject);
+
+    try { validate_category($requestObject,$dynamodb,$marshaler,true); } catch(Exception $e) {
+      $responseObject->error = true;
+      $responseObject->message = $e->getMessage();
+      die(json_encode($responseObject));
+    } 
+    $requestObject->author = get_jwt_claims($jwt)->username;
+    
+    // Add default icon if one is not provided
+    if(!isset($requestObject->icon)) {
+      $icon = 'faQuestion';
+      $requestObject->icon = $icon;
+    }
+    else {
+      $icon = $requestObject->icon;
+    }
+    add_to_table('categories',$requestObject,$dynamodb,$marshaler);
+    $responseObject->error = false;
+    $responseObject->message = $requestObject->category. " updated successfully.";
+    echo json_encode($responseObject);
+  }
+  else {
+    http_response_code(403);
+    $responseObject->error = true;
+    $responseObject->message = "You do not have permission to edit this category.";
+    die (json_encode($responseObject));
+  }
 
   break;
   default:

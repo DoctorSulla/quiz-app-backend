@@ -134,12 +134,21 @@ function check_user_exists($email,$dynamodb,$marshaler) {
       }
 }
 
-function get_user($email,$dynamodb,$marshaler) {
-  $key = $marshaler->marshalJson('
+function get_user($uid,$dynamodb,$marshaler,$uidType = 'email') {
+  if($uidType == 'email') {
+      $key = $marshaler->marshalJson('
       {
-        "email": "' .$email. '"
+        "email": "' .$uid. '"
       }
   ');
+  }
+  else if($uidType == 'id') {
+      $key = $marshaler->marshalJson('
+      {
+        "id": "' .$uid. '"
+      }');
+  }
+
 
   $params = [
       'TableName' => 'users',
@@ -303,14 +312,62 @@ class RegistrationRequest {
   }
 }
 
-function update_user($email,$properties,$newValues,$dynamodb,$marshaler) {
+function updateWinLoss($gameObject,$dynamodb,$marshaler) {
+  if($gameObject->gameStatus != 'Finished') {
+    throw new Exception('Game must be finished to update win/loss.');
+  }
+  $p1Id = $gameObject->ids[0];
+  $p2Id = $gameObject->ids[1];
+
+  if($gameObject->scores[0] > $gameObject->scores[1]) {
+    $winner = $gameObject->ids[0];
+  }
+  else if($gameObject->scores[0] < $gameObject->scores[1]) {
+    $winner = $gameObject->ids[1];
+  }
+  else {
+    $winner = false;
+  }
+  $p1 = get_user($p1,$dynamodb,$marshaler,'id');
+  $p2 = get_user($p2,$dynamodb,$marshaler,'id');  
+  
+  if($winner = $p1Id) {
+    $p1->wins++;
+    $p2->losses++;
+  }
+  else if($winner = $p2Id) {
+    $p1->losses++;
+    $p2->wins++;
+  }
+  else if(!$winner) {
+    $p1->ties++;
+    $p2->ties++;
+  }
+  update_user($p1->id,['wins','losses','ties'],[$p1->wins,$p1->losses,$p1->ties],$dynamodb,$marshaler);
+  update_user($p2->id,['wins','losses','ties'],[$p2->wins,$p2->losses,$p2->ties],$dynamodb,$marshaler);
+}
+
+function update_user($uid,$properties,$newValues,$dynamodb,$marshaler,$uidType = 'email') {
   if(count($properties) != count($newValues)) {
     throw new Exception("Properties and new values length mismatch");
   }
-  $key = $marshaler->marshalJson('
-  {
-    "email":"'.$email.'"
-  }');
+
+  if($uidType == 'email') {
+    $key = $marshaler->marshalJson('
+    {
+      "email":"'.$uid.'"
+    }');
+  }
+  else if($uidType == 'id') {
+    $key = $marshaler->marshalJson('
+    {
+      "id":"'.$uid.'"
+    }');
+  }
+  else {
+    throw new Exception("Invalid id type.");
+  }
+
 
   $variables = [":a",":b",":c",":d",":e",":f",":g",":h",":i",":j"];
 
@@ -475,7 +532,30 @@ function calculate_score($oldScore,$startingTimestamp,$bonus) {
   return $score;
 }
 
-// Create Category Related Functions
+// Category Related Functions
+
+function get_category($categoryName,$dynamodb,$marshaler) {
+  $key = $marshaler->marshalJson('
+      {
+        "category": "' .$categoryName. '"
+      }
+  ');
+
+  $params = [
+      'TableName' => 'categories',
+      'Key' => $key
+  ];
+      $result = $dynamodb->getItem($params);
+      // Check if result is empty, if so the category doesn't exist
+      if($result['Item'] == null) {
+        throw new Exception('That category does not exist.');
+      }
+      else {
+        $result = $marshaler->unmarshalJson($result['Item']);
+        $result = json_decode($result);
+        return $result;
+      }
+}
 
 function check_category_exists($category,$dynamodb,$marshaler) {
   $key = $marshaler->marshalJson('
@@ -521,13 +601,15 @@ function encode_category_entities($category) {
   return $category;
 }
 
-function validate_category($category,$dynamodb,$marshaler) {
+function validate_category($category,$dynamodb,$marshaler,$updating = false) {
   // Check category is present
   if(!isset($category->category)) {
     throw new Exception('Category name missing.');
   }
-  // Check if category already exists
-  check_category_exists($category->category,$dynamodb,$marshaler);
+    // Check if category already exists for new categories only
+  if(!$updating) {
+    check_category_exists($category->category,$dynamodb,$marshaler);
+  }
   // Check regex for category name
   if(!preg_match($GLOBALS['categoryRegExp'],$category->category)) {
     throw new Exception('Invalid category name.');
@@ -538,7 +620,7 @@ function validate_category($category,$dynamodb,$marshaler) {
   }
   // Check there are at least 10 questions
   if(count($category->questions) < 10) {
-    throw new Exception('At least 10 questions are required for a new category.');
+    throw new Exception('A category must contain at least 10 questions.');
   }
   // Iterate through questions and check the questions and answers all conform to the regex
   foreach($category->questions as $question) {
@@ -566,5 +648,15 @@ function validate_category($category,$dynamodb,$marshaler) {
       }
     }
   }
+}
+
+// Logging Functions
+
+function logRequest($request,$method,$logPath = activityLogPath) {
+  $logFile = $logPath.date("Y-m-d").".log";
+  $uri = $_SERVER['REQUEST_URI'];
+  $log = fopen($logFile, 'a');
+  fwrite($log, date('Y-m-d H:i:s') . ' ('.$method.') - '.$uri. ": " . $request . PHP_EOL);
+  fclose($log);
 }
 ?>

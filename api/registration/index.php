@@ -113,6 +113,7 @@ switch($method) {
     $responseObject->message = "Invalid verification code.";
     die(json_encode($responseObject));
   }
+  break;
   case "GET":
   // API authentication
   $headers = getallheaders();
@@ -129,6 +130,12 @@ switch($method) {
 
   $jwtClaims = get_jwt_claims($jwt);
   $user = get_user($jwtClaims->email,$dynamodb,$marshaler);
+  unset($user->hashedPassword);
+  unset($user->retryCount);
+  for($i=0;$i<count($user->ownedCategories);$i++) {
+    $user->ownedCategories[$i] = html_entity_decode($user->ownedCategories[$i],ENT_QUOTES,'UTF-8');
+  }
+  echo json_encode($user);
   // End API authentication
   break;
   case "OPTIONS":

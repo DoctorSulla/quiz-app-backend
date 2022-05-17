@@ -29,6 +29,7 @@ $player = $user->username;
 $userId = $user->id;
 
 $requestBody = file_get_contents('php://input');
+logRequest($requestBody,$method);
 $requestObject = json_decode($requestBody);
 
 $responseObject = new stdClass();
